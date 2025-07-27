@@ -299,7 +299,7 @@ const router = express.Router();
 const PROXY_SERVER = process.env.PROXY_URL;
 const agent = PROXY_SERVER ? new HttpsProxyAgent.HttpsProxyAgent(PROXY_SERVER) : null;
 
-// ADDED: Common request headers to mimic a browser
+// Common request headers to mimic a browser
 const requestHeaders = {
   'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.4896.127 Safari/537.36',
   'Accept-Language': 'en-US,en;q=0.9',
@@ -334,8 +334,15 @@ router.post('/youtube-info', async (req, res) => {
 
     console.log('Fetching info for URL:', url);
 
-    // MODIFIED: Pass agent and requestOptions to ytdl.getInfo
-    const info = await ytdl.getInfo(url, { agent: agent, requestOptions: { headers: requestHeaders } });
+    // MODIFIED: Pass agent and requestOptions directly within the options object for ytdl.getInfo
+    // This structure is often more compatible with ytdl-core's underlying request library (miniget)
+    const info = await ytdl.getInfo(url, {
+      requestOptions: {
+        agent: agent, // Pass the agent here
+        headers: requestHeaders,
+        followRedirects: true, // Ensure redirects are followed
+      }
+    });
     const videoDetails = info.videoDetails;
 
     const response = {
@@ -358,8 +365,8 @@ router.post('/youtube-info', async (req, res) => {
       return res.status(403).json({ error: 'Video requires age verification' });
     } else if (error.message.includes('This video is not available')) {
       return res.status(404).json({ error: 'Video not found or region blocked' });
-    } else if (error.message.includes('getCookieStringSync')) { // ADDED: Specific error handling for the new error
-      return res.status(500).json({ error: 'Backend error: Could not process video information. This might be due to proxy issues or YouTube restrictions.' });
+    } else if (error.message.includes('getCookieStringSync') || error.message.includes('Cannot read properties of undefined')) { // IMPROVED: Broader error handling for proxy-related issues
+      return res.status(500).json({ error: 'Backend error: Could not process video information. This is likely due to an issue with the proxy server or YouTube\'s current restrictions. Please try a different proxy or a different video.' });
     }
 
     res.status(500).json({
@@ -379,18 +386,30 @@ router.post('/youtube-download', async (req, res) => {
 
     console.log(`Starting download: format=${format}, quality=${quality}`);
 
-    // MODIFIED: Get video info again, passing the agent and requestOptions
-    const info = await ytdl.getInfo(url, { agent: agent, requestOptions: { headers: requestHeaders } });
+    // MODIFIED: Get video info again, passing the agent and requestOptions in the correct structure
+    const info = await ytdl.getInfo(url, {
+      requestOptions: {
+        agent: agent, // Pass the agent here
+        headers: requestHeaders,
+        followRedirects: true, // Ensure redirects are followed
+      }
+    });
     const videoDetails = info.videoDetails;
 
-    // MODIFIED: Initialize options with the agent and requestOptions
-    let options = { agent: agent, requestOptions: { headers: requestHeaders } };
+    // MODIFIED: Initialize options with the agent and requestOptions in the correct structure
+    let options = {
+      requestOptions: {
+        agent: agent, // Pass the agent here
+        headers: requestHeaders,
+        followRedirects: true, // Ensure redirects are followed
+      }
+    };
     let contentType = '';
     let fileExtension = '';
 
     if (format === 'mp3') {
       options = {
-        ...options, // Keep the agent and requestOptions
+        ...options, // Keep the requestOptions object
         filter: 'audioonly', // Only audio stream
         quality: 'highestaudio' // Highest available audio quality
       };
@@ -398,7 +417,7 @@ router.post('/youtube-download', async (req, res) => {
       fileExtension = 'mp3';
     } else {
       options = {
-        ...options, // Keep the agent and requestOptions
+        ...options, // Keep the requestOptions object
         filter: format => format.hasVideo && format.hasAudio,
         quality: 'highest' // Highest available combined video/audio quality
       };
@@ -433,8 +452,9 @@ router.post('/youtube-download', async (req, res) => {
   } catch (error) {
     console.error('YouTube download error:', error.message);
     if (!res.headersSent) {
+      // IMPROVED: Broader error handling for proxy-related issues during download
       res.status(500).json({
-        error: 'Download failed. Please try again or check if the video is available.'
+        error: 'Download failed. This is likely due to an issue with the proxy server or YouTube\'s current restrictions. Please try a different proxy or a different video.'
       });
     }
   }
