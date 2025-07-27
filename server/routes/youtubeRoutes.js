@@ -291,15 +291,19 @@ const express = require('express');
 const ytdl = require('@distube/ytdl-core');
 const fs = require('fs');
 const path = require('path');
-const HttpsProxyAgent = require('https-proxy-agent'); // ADDED: Import HttpsProxyAgent
+const HttpsProxyAgent = require('https-proxy-agent');
 
 const router = express.Router();
 
-// ADDED: Define proxy server URL from environment variable
-// IMPORTANT: You MUST set PROXY_URL in your Render backend service's environment variables.
-// Example: PROXY_URL = http://username:password@proxy.example.com:port
+// Define proxy server URL from environment variable
 const PROXY_SERVER = process.env.PROXY_URL;
 const agent = PROXY_SERVER ? new HttpsProxyAgent.HttpsProxyAgent(PROXY_SERVER) : null;
+
+// ADDED: Common request headers to mimic a browser
+const requestHeaders = {
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.4896.127 Safari/537.36',
+  'Accept-Language': 'en-US,en;q=0.9',
+};
 
 /**
  * Formats duration from seconds into HH:MM:SS or MM:SS format.
@@ -324,18 +328,16 @@ router.post('/youtube-info', async (req, res) => {
   try {
     const { url } = req.body;
 
-    // Validate URL using ytdl-core's built-in validator
     if (!url || !ytdl.validateURL(url)) {
       return res.status(400).json({ error: 'Invalid YouTube URL' });
     }
 
     console.log('Fetching info for URL:', url);
 
-    // MODIFIED: Pass the agent to ytdl.getInfo
-    const info = await ytdl.getInfo(url, { agent: agent });
+    // MODIFIED: Pass agent and requestOptions to ytdl.getInfo
+    const info = await ytdl.getInfo(url, { agent: agent, requestOptions: { headers: requestHeaders } });
     const videoDetails = info.videoDetails;
 
-    // Prepare response object with relevant video details
     const response = {
       title: videoDetails.title,
       thumbnail: videoDetails.thumbnails && videoDetails.thumbnails.length > 0
@@ -350,16 +352,16 @@ router.post('/youtube-info', async (req, res) => {
   } catch (error) {
     console.error('YouTube info error:', error.message);
 
-    // Provide more specific error messages based on ytdl-core errors
     if (error.message.includes('Video unavailable')) {
       return res.status(404).json({ error: 'Video is unavailable or private' });
     } else if (error.message.includes('Sign in to confirm')) {
       return res.status(403).json({ error: 'Video requires age verification' });
     } else if (error.message.includes('This video is not available')) {
       return res.status(404).json({ error: 'Video not found or region blocked' });
+    } else if (error.message.includes('getCookieStringSync')) { // ADDED: Specific error handling for the new error
+      return res.status(500).json({ error: 'Backend error: Could not process video information. This might be due to proxy issues or YouTube restrictions.' });
     }
 
-    // Generic error for other issues
     res.status(500).json({
       error: 'Failed to fetch video information. Please check the URL and try again.'
     });
@@ -371,35 +373,32 @@ router.post('/youtube-download', async (req, res) => {
   try {
     const { url, format, quality } = req.body;
 
-    // Validate URL
     if (!ytdl.validateURL(url)) {
       return res.status(400).json({ error: 'Invalid YouTube URL' });
     }
 
     console.log(`Starting download: format=${format}, quality=${quality}`);
 
-    // MODIFIED: Get video info again, passing the agent
-    const info = await ytdl.getInfo(url, { agent: agent });
+    // MODIFIED: Get video info again, passing the agent and requestOptions
+    const info = await ytdl.getInfo(url, { agent: agent, requestOptions: { headers: requestHeaders } });
     const videoDetails = info.videoDetails;
 
-    // MODIFIED: Initialize options with the agent
-    let options = { agent: agent };
+    // MODIFIED: Initialize options with the agent and requestOptions
+    let options = { agent: agent, requestOptions: { headers: requestHeaders } };
     let contentType = '';
     let fileExtension = '';
 
-    // Set download options based on format (MP3 or MP4)
     if (format === 'mp3') {
       options = {
-        ...options, // Keep the agent
+        ...options, // Keep the agent and requestOptions
         filter: 'audioonly', // Only audio stream
         quality: 'highestaudio' // Highest available audio quality
       };
       contentType = 'audio/mpeg';
       fileExtension = 'mp3';
     } else {
-      // For video (MP4), filter for formats with both video and audio
       options = {
-        ...options, // Keep the agent
+        ...options, // Keep the agent and requestOptions
         filter: format => format.hasVideo && format.hasAudio,
         quality: 'highest' // Highest available combined video/audio quality
       };
@@ -407,39 +406,32 @@ router.post('/youtube-download', async (req, res) => {
       fileExtension = 'mp4';
     }
 
-    // Sanitize filename to remove invalid characters
     const filename = `${videoDetails.title.replace(/[^\w\s.-]/gi, '')}.${fileExtension}`;
     
-    // Set response headers for file download
     res.set({
       'Content-Type': contentType,
       'Content-Disposition': `attachment; filename="${filename}"`
     });
 
     console.log('Starting stream...');
-    // MODIFIED: Pass options (which now include the agent) to ytdl
+    // MODIFIED: Pass options (which now include the agent and requestOptions) to ytdl
     const stream = ytdl(url, options);
 
-    // Handle stream errors
     stream.on('error', (error) => {
       console.error('Download stream error:', error.message);
-      // Only send error response if headers haven't been sent yet
       if (!res.headersSent) {
         res.status(500).json({ error: 'Download failed: ' + error.message });
       }
     });
 
-    // Log when stream info is received
     stream.on('info', (info, format) => {
       console.log('Stream info received, starting download...');
     });
 
-    // Pipe the video stream directly to the response
     stream.pipe(res);
 
   } catch (error) {
     console.error('YouTube download error:', error.message);
-    // Only send error response if headers haven't been sent yet
     if (!res.headersSent) {
       res.status(500).json({
         error: 'Download failed. Please try again or check if the video is available.'
