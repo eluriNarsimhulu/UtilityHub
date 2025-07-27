@@ -1,4 +1,6 @@
 import React, { useState } from 'react';
+import BASE_URL from '../config';
+
 import {
   Download, AlertCircle, CheckCircle, Loader2, Play, Eye,
   Heart, MessageCircle, User, XCircle, RefreshCcw
@@ -65,7 +67,7 @@ const InstagramDownloader: React.FC = () => {
 
     setLoading(true);
     try {
-      const response = await fetch('/api/instagram/download', {
+      const response = await fetch(`${BASE_URL}/instagram/download`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url: trimmedUrl })

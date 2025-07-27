@@ -224,6 +224,7 @@
 
 import React, { useState } from 'react';
 import { Download, Youtube, Music, Video, AlertCircle, Loader } from 'lucide-react';
+import BASE_URL from '../config';
 
 interface VideoInfo {
   title: string;
@@ -283,7 +284,7 @@ const YoutubeDownloader: React.FC = () => {
     setVideoInfo(null);
 
     try {
-      const response = await fetch('/api/youtube-info', {
+      const response = await fetch(`${BASE_URL}/youtube-info`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -320,7 +321,7 @@ const YoutubeDownloader: React.FC = () => {
     // This provides visual feedback to the user that the download is being prepared.
     setTimeout(async () => {
       try {
-        const response = await fetch('/api/youtube-download', {
+        const response = await fetch(`${BASE_URL}/youtube-download`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',

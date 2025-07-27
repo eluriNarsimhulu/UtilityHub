@@ -177,6 +177,7 @@
 
 import React, { useState, useCallback, useEffect } from 'react';
 import { Upload, Download, Image as ImageIcon, Sliders, Maximize, FileText, XCircle } from 'lucide-react';
+import BASE_URL from '../config';
 
 // Mock FileUploadZone and ProgressBar components for demonstration.
 // In a real application, these would be imported from their respective files.
@@ -345,7 +346,7 @@ const ImageCompressor: React.FC = () => {
           formData.append('targetHeight', targetHeight.toString());
         }
 
-        const response = await fetch('/api/compress-image', {
+        const response = await fetch(`${BASE_URL}/compress-image`, {
           method: 'POST',
           body: formData,
         });

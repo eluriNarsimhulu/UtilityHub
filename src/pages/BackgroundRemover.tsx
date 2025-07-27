@@ -2,6 +2,7 @@ import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { Upload, Download, Scissors, Eye, EyeOff, Sliders, RotateCcw, Wand2 } from 'lucide-react';
 import FileUploadZone from '../components/FileUploadZone';
 import ProgressBar from '../components/ProgressBar';
+import BASE_URL from '../config';
 
 interface ProcessedImage {
   original: File;
@@ -78,7 +79,7 @@ const BackgroundRemover: React.FC = () => {
       formData.append('sensitivity', sensitivity.toString());
       formData.append('featherRadius', featherRadius.toString());
 
-      const response = await fetch('/api/remove-background', {
+      const response = await fetch(`${BASE_URL}/remove-background`, {
         method: 'POST',
         body: formData,
       });
